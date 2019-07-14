@@ -24,11 +24,10 @@ def draw(ctx: cairo.Context, width, height):
     ctx.scale(scale, scale)
     ctx.rotate(-np.pi/10)
     ctx.set_line_width(line_width)
-    # ctx.set_line_cap(cairo.LineCap.SQUARE)
     ctx.set_line_join(cairo.LineJoin.ROUND)
 
 
-    ctx.set_source_rgb(0, 0, 0)
+    ctx.set_source_rgb(*background)
     ctx.paint()
 
     draw_triangles(ctx, large_triangles, color1, (0.8, 0.8, 0.8))
@@ -48,7 +47,7 @@ def draw_triangles(ctx: cairo.Context, arr, fill_color, stroke_color):
 
 def initialize(radius, output):
     if tiling == 'p2':
-        for i in range(1):
+        for i in range(10):
             if i % 2 == 0:
                 output.append(np.array([[radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
                                         [radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
@@ -172,12 +171,15 @@ def main():
 
     parser.add_argument('-r', '--radius', default=1, type=float, help='The radius of the tiling. A radius of 1 will fit exactly in a square canvas, while a radius greater than sqrt(2) will completely cover a square canvas.')
 
+    parser.add_argument('-b', '--background', default='#000000', help='The background color.')
 
-    args = parser.parse_args('--gtk --p3 -r 1.5 --color1 #224466 --color2 #7B9F35'.split())
 
-    global color1, color2
+    args = parser.parse_args('--gtk --p3 -r 1 --color1 #224466 --color2 #7B9F35'.split())
+
+    global color1, color2, background
     color1 = hex_to_rgb(args.color1)
     color2 = hex_to_rgb(args.color2)
+    background = hex_to_rgb(args.background)
 
     global tiling
     tiling = args.tiling
