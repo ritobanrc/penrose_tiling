@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """
 Draws a penrose tiling. See http://www.ams.org/publicoutreach/feature-column/fcarc-penrose
 """
@@ -17,13 +18,10 @@ PHI = (1 + np.sqrt(5))/2
 line_width = 0.03
 
 
-def draw(drawing_area: Gtk.DrawingArea, ctx: cairo.Context):
-    alloc = drawing_area.get_allocation()
-    width = alloc.width
-    height = alloc.height
-
+def draw(ctx: cairo.Context, width, height):
     ctx.translate(width/2, height/2)
-    ctx.scale(width/2, height/2)
+    scale = np.min([width/2, height/2])
+    ctx.scale(scale, scale)
     ctx.rotate(-np.pi/10)
     ctx.set_line_width(line_width)
     # ctx.set_line_cap(cairo.LineCap.SQUARE)
@@ -33,8 +31,8 @@ def draw(drawing_area: Gtk.DrawingArea, ctx: cairo.Context):
     ctx.set_source_rgb(0, 0, 0)
     ctx.paint()
 
-    draw_triangles(ctx, large_triangles, (0, 0.3, 0.1), (0.8, 0.8, 0.8))
-    draw_triangles(ctx, small_triangles, (0, 0.1, 0.3), (0.8, 0.8, 0.8))
+    draw_triangles(ctx, large_triangles, color1, (0.8, 0.8, 0.8))
+    draw_triangles(ctx, small_triangles, color2, (0.8, 0.8, 0.8))
 
 
 def draw_triangles(ctx: cairo.Context, arr, fill_color, stroke_color):
@@ -48,19 +46,30 @@ def draw_triangles(ctx: cairo.Context, arr, fill_color, stroke_color):
         ctx.stroke()
 
 
-def initialize(radius = PHI):
-    for i in range(10):
-        if i % 2 == 0:
-            large_triangles.append(np.array([[radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
-                                             [radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
-                                             [0, 0]]))
-        else:
-            large_triangles.append(np.array([[radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
-                                             [radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
-                                             [0, 0]]))
+def initialize(radius, output):
+    if tiling == 'p2':
+        for i in range(1):
+            if i % 2 == 0:
+                output.append(np.array([[radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
+                                        [radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
+                                        [0, 0]]))
+            else:
+                output.append(np.array([[radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
+                                        [radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
+                                        [0, 0]]))
+    elif tiling == 'p3':
+        for i in range(10):
+            if i% 2 == 0:
+                output.append(np.array([[radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)],
+                                        [0, 0],
+                                        [radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)]]))
+            else:
+                output.append(np.array([[radius * np.cos((i+1)*np.pi/5), radius * np.sin((i+1)*np.pi/5)],
+                                        [0, 0],
+                                        [radius * np.cos(i*np.pi/5), radius * np.sin(i*np.pi/5)]]))
 
 
-def subdivide():
+def deflate_p2():
     global large_triangles, small_triangles
     new_large_triangles = []
     new_small_triangles = []
@@ -85,15 +94,55 @@ def subdivide():
     large_triangles = new_large_triangles
     small_triangles = new_small_triangles
 
+def deflate_p3():
+    global large_triangles, small_triangles
+    new_large_triangles = []
+    new_small_triangles = []
+
+    for triangle in small_triangles:
+        D = triangle[0] * (1 - (PHI - 1)/PHI) + triangle[1] * (PHI - 1)/PHI
+
+        new_large_triangles.append(np.vstack((triangle[2], D, triangle[1])))
+        new_small_triangles.append(np.vstack((D, triangle[2], triangle[0])))
+
+    for triangle in large_triangles:
+        D = triangle[1] * (1/PHI) + triangle[0] * (1 - 1/PHI)
+        E = triangle[2] * (PHI/(PHI + 1)) + triangle[0] * (1/(PHI + 1))
+
+        new_large_triangles.append(np.vstack((E, D, triangle[0])))
+        new_large_triangles.append(np.vstack((triangle[2], E, triangle[1])))
+        new_small_triangles.append(np.vstack((D, E, triangle[1])))
+
+
+    large_triangles = new_large_triangles
+    small_triangles = new_small_triangles
+
+
+
+def deflate():
+    if tiling == 'p2':
+        deflate_p2()
+    elif tiling == 'p3':
+        deflate_p3()
+    global line_width
+    line_width *= 0.65
     # print(new_large_triangles, new_small_triangles)
 
 
 def on_mouse_pressed(da, event, *data):
-    global line_width
-    subdivide()
-    line_width *= 0.5
+    deflate()
     da.queue_draw()
 
+def on_draw(da: Gtk.DrawingArea, ctx: cairo.Context):
+    alloc = da.get_allocation()
+    width = alloc.width
+    height = alloc.height
+
+    draw(ctx, width, height)
+
+def hex_to_rgb(hex_code):
+    h = hex_code.lstrip('#')
+    return tuple(int(h[i:i+2], 16)/255 for i in (0, 2, 4))
 
 def main():
     """
@@ -104,29 +153,69 @@ def main():
     output_format = parser.add_mutually_exclusive_group()
     output_format.add_argument('--gtk',
                                action='store_true',
-                               help='Display the result in an interactive Gtk drawing area.',
-                               default=True
+                               help='Display the result in an interactive Gtk drawing area. ',
                                )
+    output_format.add_argument('--svg',
+                               help='Output to an svg file specified by this option.',
+                               )
+    tiling_group = parser.add_mutually_exclusive_group()
+    tiling_group.add_argument('--p2', dest='tiling', action='store_const', const='p2')
+    tiling_group.add_argument('--p3', dest='tiling', action='store_const', const='p3')
 
-    args = parser.parse_args()
+    parser.add_argument('--width', default=800, type=int, help='The width of the drawing area.')
+    parser.add_argument('--height', default=800, type=int, help='The height of the drawing area.')
+
+    parser.add_argument('-i', '--iters', default=5, type=int, help='The number of times to deflate. ')
+
+    parser.add_argument('--color1', default='#7B9F35', help='The color of the larger prototiles.')
+    parser.add_argument('--color2', default='#226666', help='The color of the smaller prototiles.')
+
+    parser.add_argument('-r', '--radius', default=1, type=float, help='The radius of the tiling. A radius of 1 will fit exactly in a square canvas, while a radius greater than sqrt(2) will completely cover a square canvas.')
+
+
+    args = parser.parse_args('--gtk --p3 -r 1.5 --color1 #224466 --color2 #7B9F35'.split())
+
+    global color1, color2
+    color1 = hex_to_rgb(args.color1)
+    color2 = hex_to_rgb(args.color2)
+
+    global tiling
+    tiling = args.tiling
+
+
     if args.gtk:
         win = Gtk.Window()
         win.connect('destroy', Gtk.main_quit)
-        win.set_default_size(800, 800)
+        win.set_default_size(args.width, args.height)
 
         drawingarea = Gtk.DrawingArea()
         win.add(drawingarea)
-        drawingarea.connect('draw', draw)
+        drawingarea.connect('draw', on_draw)
 
         drawingarea.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         drawingarea.connect('button-press-event', on_mouse_pressed)
 
-        initialize()
+        if args.tiling == 'p2':
+            initialize(args.radius, large_triangles)
+        elif args.tiling == 'p3':
+            initialize(args.radius, small_triangles)
 
         drawingarea.queue_draw()
 
         win.show_all()
         Gtk.main()
+    elif args.svg:
+        with cairo.SVGSurface(args.svg, args.width, args.height) as surface:
+            ctx = cairo.Context(surface)
+
+            if args.tiling == 'p2':
+                initialize(args.radius, large_triangles)
+            elif args.tiling == 'p3':
+                initialize(args.radius, small_triangles)
+            for _ in range(args.iters):
+                deflate()
+            draw(ctx, args.width, args.height)
+
 
 
 if __name__ == '__main__':
